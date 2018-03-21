@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 from reikna import cluda
 from reikna.cluda import Snippet, dtypes
 from reikna.core import Transformation, Type, Annotation, Parameter, Computation
-from reikna.helpers import template_from
+from reikna.helpers import template_for
 from reikna.algorithms import PureParallel
 from reikna.fft.fftshift import FFTShift
 from reikna.fft.fft import FFT
@@ -38,84 +38,20 @@ class PhaseComputation(Computation):
         plan.computation_call(fft, temp, input_, 0)
         plan.computation_call(fftshift, temp, temp)
 
-        crop_template = template_from(
-            """
-            <%def name='cropcomp(kernel_declaration, k_output, k_input_, k_rect_x, k_rect_y, k_rect_r)'>
-            ${kernel_declaration}
-            {
-                VIRTUAL_SKIP_THREADS;
-                const VSIZE_T square_size = virtual_global_size(0);
-                const VSIZE_T idx0 = virtual_global_id(0);
-                const VSIZE_T idx1 = virtual_global_id(1);
-
-                const VSIZE_T new_idx0 = (idx0 - ${k_rect_y} + square_size / 2) % square_size;
-                const VSIZE_T new_idx1 = (idx1 - ${k_rect_x} + square_size / 2) % square_size;
-
-                if(new_idx0 < square_size / 2 - ${k_rect_r} ||
-                   new_idx0 > square_size / 2 + ${k_rect_r} ||
-                   new_idx1 < square_size / 2 - ${k_rect_r} ||
-                   new_idx1 > square_size / 2 + ${k_rect_r}) {
-                   ${k_output.store_idx}(new_idx0, new_idx1, 0);
-
-                } else {
-                    ${k_input_.ctype} value = ${k_input_.load_idx}(idx0, idx1);
-                    ${k_output.store_idx}(new_idx0, new_idx1, value);
-                }
-
-            }
-            </%def>
-            """)
-        magspec_template = template_from(
-        """
-        <%def name='magspec(kernel_declaration, k_output, k_input_)'>
-        ${kernel_declaration}
-        {
-            VIRTUAL_SKIP_THREADS;
-            const VSIZE_T idx0 = virtual_global_id(0);
-            const VSIZE_T idx1 = virtual_global_id(1);
-
-            ${k_input_.ctype} complex_value = ${k_input_.load_idx}(idx0, idx1);
-            ${k_output.ctype} absolute_val = log(sqrt(pow(complex_value.x, 2) + pow(complex_value.y, 2)));
-            ${k_output.store_idx}(idx0, idx1, absolute_val);
-        }
-        </%def>
-
-        """)
+        template = template_for("kernels") # Read template from kernels.mako
         
         plan.kernel_call(
-            crop_template.get_def('cropcomp'),
+            template.get_def('cropcomp'),
             [temp2, temp, rect_x, rect_y, rect_r],
             global_size=output.shape)
-        """
-        plan.kernel_call(
-            magspec_template.get_def('magspec'),
-            [output, temp2],
-            global_size=output.shape)
-        """
+
         plan.computation_call(fftshift, temp2, temp2)
         plan.computation_call(fft, temp, temp2, 1)
-        angle_template = template_from(
-        """
-        <%def name='angle(kernel_declaration, k_output, k_input_)'>
-        ${kernel_declaration}
-        {
-            VIRTUAL_SKIP_THREADS;
-            const VSIZE_T idx0 = virtual_global_id(0);
-            const VSIZE_T idx1 = virtual_global_id(1);
 
-
-            ${k_input_.ctype} complex_value = ${k_input_.load_idx}(idx0, idx1);
-            ${k_output.ctype} n_angle = atan2(complex_value.y, complex_value.x);
-            ${k_output.store_idx}(idx0, idx1, n_angle);
-        }
-        </%def>
-        """)
         plan.kernel_call(
-            angle_template.get_def('angle'),
+            template.get_def('angle'),
             [output, temp],
             global_size=output.shape)
-
-
 
         return plan
 
@@ -136,14 +72,12 @@ data_dev = thr.to_device(data)
 outp_dev = thr.to_device(outp)
 
 t0 = time.time()
-plt.figure()
-phasecompc(outp_dev, data_dev, 1585, 1007, 24)
-outp_t = outp_dev.get()
-print(outp_t)
+for i in range(0, 24):
+    phasecompc(outp_dev, data_dev, 1585, 1007, 24)
+    #outp_t = outp_dev.get()
+#print(outp_t)
 
 
-plt.imshow(outp_t)
-plt.show()
 t1 = time.time()
 
 print("Took {} secs".format(t1-t0))
