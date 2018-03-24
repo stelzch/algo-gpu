@@ -1,5 +1,6 @@
 #!/usr/bin/python3
 import time
+import sys
 import numpy as np
 import matplotlib.pyplot as plt
 from reikna import cluda
@@ -164,30 +165,69 @@ class PhaseComputation(Computation):
             global_size=output.shape)
         return plan
 
-api = cluda.ocl_api()
-thr = api.Thread.create()
+if __name__ == '__main__':
+    """Read from given path and calculate phase."""
 
-img = plt.imread('/home/cstelz/holmos_raw.png')
+    usage = """phasecomputation.py imagefile rect_x rect_y rect_r
 
-data = img.astype(np.complex128)
-magspec = np.zeros_like(data)
-outp = np.zeros_like(data).astype(np.float64)
+    imagefile - path to a quadratic grayscale image file
+    """
 
-phasecomp = PhaseComputation(outp, data, 50.0, 50, 50)
-phasecompc = phasecomp.compile(thr)
+    if len(sys.argv) != 2:
+        print(usage)
+        sys.exit(-1)
 
-data_dev = thr.to_device(data)
-mgsp_dev = thr.to_device(magspec)
-outp_dev = thr.to_device(outp)
+    api = cluda.ocl_api()
+    thr = api.Thread.create()
 
-t0 = time.time()
-phasecompc(outp_dev, mgsp_dev, data_dev, 975, 528, 24)
-outp_t = outp_dev.get()
+    try:
+        img = plt.imread(sys.argv[1])
+    except:
+        print("[ERROR] Could not read image from file")
+        sys.exit(-1)
 
-t1 = time.time()
-plt.figure()
-plt.imshow(outp_t)
-plt.imsave('output.png', outp_t)
-plt.show()
+    print(img.ndim, img.shape)
+    if img.ndim == 3:
+        size = min(img.shape[0], img.shape[1])
+        print(size)
+        img = img[:size, :size, 0]
+    img = img[:2048, :2048]
+    print(img.ndim, img.shape)
 
-print("Took {} secs".format(t1-t0))
+
+    if img.ndim != 2 or img.shape[0] != img.shape[1]:
+        print("[ERROR] Image must be grayscale with same width and height")
+        sys.exit(-1)
+
+    data = img.astype(np.complex128)
+    outp = np.zeros(data.shape, dtype=np.float64)
+    magspec = np.zeros_like(outp)
+
+    phasecomp = PhaseComputation(outp, data, 50.0, 50, 50)
+    phasecompc = phasecomp.compile(thr)
+
+    data_dev = thr.to_device(data)
+    mgsp_dev = thr.to_device(magspec)
+    outp_dev = thr.to_device(outp)
+
+    # Show user magnitude spectrum to select satellite
+    phasecompc(outp_dev, mgsp_dev, data_dev, 975, 528, 24)
+    magspec = mgsp_dev.get()
+    print(magspec.dtype, magspec.shape)
+    plt.figure()
+    plt.imshow(mgsp_dev.get())
+    plt.show()
+    rect_x = input("Rect X:")
+    rect_y = input("Rect Y:")
+    rect_r = input("Rect R:")
+
+    t0 = time.time()
+    phasecompc(outp_dev, mgsp_dev, data_dev, rect_x, rect_y, rect_r)
+    outp_t = outp_dev.get()
+
+    t1 = time.time()
+    plt.figure()
+    plt.imshow(outp_t)
+    plt.show()
+
+    print("Took {} secs".format(t1-t0))
