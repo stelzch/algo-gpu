@@ -173,9 +173,14 @@ if __name__ == '__main__':
     imagefile - path to a quadratic grayscale image file
     """
 
-    if len(sys.argv) != 2:
+    if len(sys.argv) < 2:
         print(usage)
         sys.exit(-1)
+
+    interactive = True
+    if len(sys.argv) == 5:
+        interactive = False
+
 
     api = cluda.ocl_api()
     thr = api.Thread.create()
@@ -212,22 +217,30 @@ if __name__ == '__main__':
 
     # Show user magnitude spectrum to select satellite
     phasecompc(outp_dev, mgsp_dev, data_dev, 975, 528, 24)
-    magspec = mgsp_dev.get()
-    print(magspec.dtype, magspec.shape)
-    plt.figure()
-    plt.imshow(mgsp_dev.get())
-    plt.show()
-    rect_x = input("Rect X:")
-    rect_y = input("Rect Y:")
-    rect_r = input("Rect R:")
+    if interactive:
+        magspec = mgsp_dev.get()
+        print(magspec.dtype, magspec.shape)
+        plt.figure()
+        plt.imshow(mgsp_dev.get())
+        plt.show()
+        rect_x = input("Rect X:")
+        rect_y = input("Rect Y:")
+        rect_r = input("Rect R:")
+    else:
+        rect_x = sys.argv[2]
+        rect_y = sys.argv[3]
+        rect_r = sys.argv[4]
 
     t0 = time.time()
     phasecompc(outp_dev, mgsp_dev, data_dev, rect_x, rect_y, rect_r)
     outp_t = outp_dev.get()
 
     t1 = time.time()
-    plt.figure()
-    plt.imshow(outp_t)
-    plt.show()
+    if interactive:
+        plt.figure()
+        plt.imshow(outp_t)
+        plt.show()
+    else:
+        plt.imsave("output.png", outp_t)
 
     print("Took {} secs".format(t1-t0))
