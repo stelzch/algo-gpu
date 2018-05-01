@@ -3,6 +3,7 @@ import time
 import sys
 import numpy as np
 import matplotlib.pyplot as plt
+import scipy.ndimage.filters
 from reikna import cluda
 from reikna.cluda import Snippet, dtypes
 from reikna.core import Transformation, Type, Annotation, Parameter, Computation
@@ -197,6 +198,8 @@ if __name__ == '__main__':
         print(size)
         img = img[:size, :size, 0]
     img = img[:2048, :2048]
+    width = 2048
+    height = 2048
     print(img.ndim, img.shape)
 
 
@@ -219,6 +222,27 @@ if __name__ == '__main__':
     phasecompc(outp_dev, mgsp_dev, data_dev, 975, 528, 24)
     if interactive:
         magspec = mgsp_dev.get()
+
+
+        center_patch_size = 200
+        kernel_size = 50
+        kernel = np.ones((kernel_size, kernel_size))
+        magspec[height // 2 - center_patch_size // 2:
+                height // 2 + center_patch_size // 2,
+                width // 2 - center_patch_size // 2:
+                width // 2 + center_patch_size // 2] = np.zeros((center_patch_size,
+                    center_patch_size))
+
+        # Apply Gaussian filter
+        magspec = scipy.ndimage.filters.convolve(magspec, kernel)
+
+        nmax = 5
+        maxindex = magspec.argsort(axis=None)[-nmax:][::-1]
+        for x in maxindex:
+            print("Maximum at {} {}".format(x%2048, x//2048))
+
+
+        """
         print(magspec.dtype, magspec.shape)
         plt.figure()
         plt.imshow(mgsp_dev.get())
@@ -226,6 +250,10 @@ if __name__ == '__main__':
         rect_x = input("Rect X:")
         rect_y = input("Rect Y:")
         rect_r = input("Rect R:")
+        """
+        rect_x = maxindex[0] % 2048
+        rect_y = maxindex[0] // 2048
+        rect_r = 50
     else:
         rect_x = sys.argv[2]
         rect_y = sys.argv[3]
